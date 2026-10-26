@@ -1,4 +1,5 @@
 #include "main.h"
+#include "comm.h"
 
 // ---- Shadow buffers & FSM state ----
 struct CycleStep currentCycle[MAX_CYCLE_STEPS];
@@ -80,14 +81,14 @@ void start_next_phase_or_end() {
     if (hasNewCycle) {
       // Swap shadow buffer: nextCycle -> currentCycle
       activate_next_cycle();
-      Serial.println("[FSM] Cycle swapped from nextCycle");
+      send_debug("[FSM] Cycle swapped from nextCycle\n");
     } else {
       // Raspi mati / kabel putus -> FAILSAFE Tahap 1
       fsmState = FSM_FAILSAFE_RED;
       fsmTimerStart = millis();
       reqSentInFailsafeRed = false;
       apply_state_to_registers(STATE_ALL_RED_CLEARANCE);
-      Serial.println("[FSM] Cycle ended, no new plan -> FAILSAFE RED");
+      send_debug("[FSM] Cycle ended, no new plan -> FAILSAFE RED\n");
     }
   } else {
     start_green_phase();
@@ -108,7 +109,7 @@ void run_timer_fsm() {
     if (elapsed >= threshold) {
       send_req_cycle();
       reqCycleSent = true;
-      Serial.println("[FSM] Prefetch: CMD_REQ_CYCLE sent (T-10s)");
+      send_debug("[FSM] Prefetch: CMD_REQ_CYCLE sent (T-10s)\n");
     }
   }
 
@@ -144,7 +145,7 @@ void run_timer_fsm() {
       if (!reqSentInFailsafeRed) {
         send_req_cycle();
         reqSentInFailsafeRed = true;
-        Serial.println("[FSM] Failsafe RED: CMD_REQ_CYCLE sent");
+        send_debug("[FSM] Failsafe RED: CMD_REQ_CYCLE sent\n");
       }
       if (now - fsmTimerStart >= FAILSAFE_RED_DURATION_MS) {
         // awktu nunggu
@@ -153,7 +154,7 @@ void run_timer_fsm() {
         failsafeLastReq = now;
         flashingState = true;
         apply_state_to_registers(STATE_FLASHING_YELLOW, false);
-        Serial.println("[FSM] Failsafe FLASHING started (retry every 2s)");
+        send_debug("[FSM] Failsafe FLASHING started (retry every 2s)\n");
       }
       break;
 

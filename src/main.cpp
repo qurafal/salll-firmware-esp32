@@ -1,12 +1,9 @@
 #include "main.h"
+#include "comm.h"
 
-inline void set_light(uint8_t &byte, uint8_t lane, bool on) {
-  if (on) {
-    byte &= ~(1 << lane);
-  } else {
-    byte |= (1 << lane);
-  }
-}
+
+#define MAC_ADDRESS_INDEX 0
+
 
 void shiftOutByte(uint8_t dataPin, uint8_t clockPin, uint8_t val) {
   for (uint8_t i = 0; i < 8; i++) {
@@ -26,32 +23,6 @@ void update_shift_registers(uint8_t byte_merah, uint8_t byte_kuning, uint8_t byt
   digitalWrite(TRAFFIC_LATCH_PIN, HIGH);
 }
 
-static uint8_t serial_rx_buf[MAX_SERIAL_PAYLOAD];
-
-void serial_recv(void (*callback)(const uint8_t *data, int len)) {
-    if (Serial.available() < 5) return;
-
-    uint8_t h1 = Serial.read();
-    if (h1 != 0xAB) return;
-
-    uint8_t h2 = Serial.read();
-    if (h2 != 0xCD) return;
-
-    uint8_t h3 = Serial.read();
-    if (h3 != 0xFF) return;
-
-    uint8_t len = Serial.read();
-    if (len == 0 || len > MAX_SERIAL_PAYLOAD) return;
-
-    if (Serial.available() < len) return;
-
-    for (uint8_t i = 0; i < len; i++) {
-        serial_rx_buf[i] = Serial.read();
-    }
-
-    callback(serial_rx_buf, len);
-}
-
 void setup() {
   delay(200);
 
@@ -67,10 +38,13 @@ void setup() {
 
   delay(100);
 
+  init_esp_now(MAC_ADDRESS_INDEX);
+  uint8_t data[2] = {10,10};
+  esp_now_send(mac_addresses[1],data,2);
+  send_debug("Halllo");
+
   update_shift_registers(0xFF, 0xFF, 0xFF);
-  Serial.println("[SLAVE] Smart Traffic Light Slave Executor Ready");
-  Serial.println("[SLAVE] Protocol: AB CD FF <len> <cmd> <data...>");
-  Serial.println("[SLAVE] FSM: PULL-BASED TIMING PLAN (shadow buffer + prefetch + failsafe)");
+
 }
 
 void loop() {
@@ -79,5 +53,4 @@ void loop() {
   }
 
   run_timer_fsm();
-  run_simulation_tick();
 }

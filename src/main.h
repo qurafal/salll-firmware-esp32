@@ -7,14 +7,15 @@
 #define TRAFFIC_CLOCK_PIN 4
 #define TRAFFIC_LATCH_PIN 16
 
-#define LANE_N_S  0
-#define LANE_N_R  1
-#define LANE_S_S  2
-#define LANE_S_R  3
-#define LANE_E_S  4
-#define LANE_E_R  5
-#define LANE_W_S  6
-#define LANE_W_R  7
+// Lane IDs are 1..8 (used directly in set_light / apply_traffic_state).
+// No #define constants for individual lanes — use literal IDs.
+// Bit position = lane_id - 1.
+//
+// LHT (Indonesia) physical mapping (clockwise N,E,S,W):
+//   Lane 1 = North Straight    Lane 5 = South Straight
+//   Lane 2 = North Right Turn  Lane 6 = South Right Turn
+//   Lane 3 = East Straight     Lane 7 = West Straight
+//   Lane 4 = East Right Turn   Lane 8 = West Right Turn
 
 #define MAX_CYCLE_STEPS 8
 
@@ -28,7 +29,6 @@
 
 enum Command : uint8_t {
   CMD_WRITE = 0x01,
-  CMD_UTILS = 0x02,
   CMD_LOAD_CYCLE = 0x03,
   CMD_FORCE_NEXT = 0x04,
   CMD_EMERGENCY = 0x05,
@@ -37,25 +37,35 @@ enum Command : uint8_t {
   CMD_REQ_CYCLE = 0x08
 };
 
-enum UtilsCmd : uint8_t {
-  UTILS_HELP = 0x01,
-  UTILS_SIMULATE_ON = 0x02,
-  UTILS_SIMULATE_OFF = 0x03
-};
-
 enum TrafficState : uint8_t {
-  STATE_SYSTEM_INIT       = 0,
-  STATE_EVALUATE_QUEUE    = 1,
-  STATE_NS_STRAIGHT       = 10,
-  STATE_N_PRIORITY        = 11,
-  STATE_S_PRIORITY        = 12,
-  STATE_WE_STRAIGHT       = 13,
-  STATE_W_PRIORITY        = 14,
-  STATE_E_PRIORITY        = 15,
-  STATE_YELLOW_TRANSITION = 20,
-  STATE_ALL_RED_CLEARANCE = 21,
-  STATE_FLASHING_YELLOW   = 22,
-  STATE_EMERGENCY         = 23
+  STATE_SYSTEM_INIT       = 0x00,
+  STATE_EVALUATE_QUEUE    = 0x01,
+
+  /* 8 individual lane green states (8-junction mode) */
+  STATE_LANE_1_GREEN      = 0x10,
+  STATE_LANE_2_GREEN      = 0x11,
+  STATE_LANE_3_GREEN      = 0x12,
+  STATE_LANE_4_GREEN      = 0x13,
+  STATE_LANE_5_GREEN      = 0x14,
+  STATE_LANE_6_GREEN      = 0x15,
+  STATE_LANE_7_GREEN      = 0x16,
+  STATE_LANE_8_GREEN      = 0x17,
+
+  /* 4 approach pair green states (4-junction mode: straight + right) */
+  STATE_APPROACH_1_2_GREEN = 0x18,
+  STATE_APPROACH_3_4_GREEN = 0x19,
+  STATE_APPROACH_5_6_GREEN = 0x1A,
+  STATE_APPROACH_7_8_GREEN = 0x1B,
+
+  /* 2 opposing pair green states (LHT: right-turn-on-red for all right lanes) */
+  STATE_OPPOSING_1_5_GREEN = 0x1C,
+  STATE_OPPOSING_3_7_GREEN = 0x1D,
+
+  /* transition / system states */
+  STATE_YELLOW_TRANSITION = 0x20,
+  STATE_ALL_RED_CLEARANCE = 0x21,
+  STATE_FLASHING_YELLOW   = 0x22,
+  STATE_EMERGENCY         = 0x23
 };
 
 enum FsmState : uint8_t {
@@ -73,7 +83,14 @@ struct CycleStep {
   uint16_t duration_sec;
 };
 
-inline void set_light(uint8_t &byte, uint8_t lane, bool on);
+inline void set_light(uint8_t &byte, uint8_t lane_id, bool on) {
+  uint8_t bit = lane_id - 1;
+  if (on) {
+    byte &= ~(1 << bit);
+  } else {
+    byte |= (1 << bit);
+  }
+}
 void shiftOutByte(uint8_t dataPin, uint8_t clockPin, uint8_t val);
 void update_shift_registers(uint8_t byte_merah, uint8_t byte_kuning, uint8_t byte_hijau);
 const char* state_name(uint8_t state);
@@ -83,12 +100,6 @@ void apply_state_to_registers(uint8_t state, bool debug = true);
 void processing_command(uint8_t *data, int len);
 void serial_recv(void (*callback)(const uint8_t *data, int len));
 void on_serial_recv_cb(const uint8_t *data, int len);
-
-// legacy simulation module
-extern bool simulate_active;
-extern size_t sim_index;
-extern unsigned long sim_last;
-void run_simulation_tick();
 
 // pull-based timing plan FSM
 void run_timer_fsm();
