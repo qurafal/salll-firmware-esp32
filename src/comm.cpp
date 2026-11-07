@@ -78,27 +78,47 @@ void send_debug(const char *fmt, ...) {
 }
 
 void serial_recv(void (*callback)(const uint8_t *data, int len)) {
-    if (Serial.available() < 5) return;
+    enum ParserState : uint8_t { WANT_AB, WANT_CD, WANT_FF, WANT_LEN, WANT_PAYLOAD };
+    static ParserState state = WANT_AB;
+    static uint8_t payload_len = 0;
+    static uint8_t payload_pos = 0;
+    static uint8_t payload_buf[MAX_SERIAL_PAYLOAD];
 
-    uint8_t h1 = Serial.read();
-    if (h1 != 0xAB) return;
+    while (Serial.available() > 0) {
+        uint8_t b = static_cast<uint8_t>(Serial.read());
 
-    uint8_t h2 = Serial.read();
-    if (h2 != 0xCD) return;
-
-    uint8_t h3 = Serial.read();
-    if (h3 != 0xFF) return;
-
-    uint8_t len = Serial.read();
-    if (len == 0 || len > MAX_SERIAL_PAYLOAD) return;
-
-    if (Serial.available() < len) return;
-
-    uint8_t *data_recv = nullptr;
-    data_recv = new uint8_t[len];
-    Serial.readBytes(data_recv, len);
-
-    callback(data_recv, len);
+        switch (state) {
+            case WANT_AB:
+                if (b == 0xAB) state = WANT_CD;
+                break;
+            case WANT_CD:
+                if (b == 0xCD) state = WANT_FF;
+                else state = (b == 0xAB) ? WANT_CD : WANT_AB;
+                break;
+            case WANT_FF:
+                if (b == 0xFF) state = WANT_LEN;
+                else state = (b == 0xAB) ? WANT_CD : WANT_AB;
+                break;
+            case WANT_LEN:
+                if (b == 0 || b > MAX_SERIAL_PAYLOAD) {
+                    state = (b == 0xAB) ? WANT_CD : WANT_AB;
+                    break;
+                }
+                payload_len = b;
+                payload_pos = 0;
+                state = WANT_PAYLOAD;
+                break;
+            case WANT_PAYLOAD:
+                payload_buf[payload_pos++] = b;
+                if (payload_pos >= payload_len) {
+                    uint8_t *data_recv = new uint8_t[payload_len];
+                    memcpy(data_recv, payload_buf, payload_len);
+                    callback(data_recv, payload_len);
+                    state = WANT_AB;
+                }
+                break;
+        }
+    }
 }
 
 int getMACIndex(const uint8_t *mac)
